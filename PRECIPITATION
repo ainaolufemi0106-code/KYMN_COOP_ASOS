@@ -1,1 +1,1914 @@
+#Calculate the distance between 2 stations using LON and LAT
+from math import radians, sin, cos, acos
+print("input coordinates of two points: ")
+slat = radians(float(input("starting latitude: ")))
+elat = radians(float(input("ending latitude: ")))
+slon = radians(float(input("starting longitude: ")))
+elon= radians(float(input("ending longitude: ")))
+dist = 6371.0*acos(sin(slat)*sin(elat)+cos(slat)* cos(elat)*cos(slon-elon))
+print("The distance is %2fkm." %dist)
+================================================================================================================================================================================================================================================
+#DESCRIPTIVE STATS FOR SEASONAL DIFFERENCES
+import pandas as pd
+import numpy as np
+# Function to determine the season based on month
+def get_season(month):
+    if month in [12, 1, 2]:
+        return 'Winter'
+    elif month in [3, 4, 5]:
+        return 'Spring'
+    elif month in [6, 7, 8]:
+        return 'Summer'
+    elif month in [9, 10, 11]:
+        return 'Fall'
+    
+# Load the data
+df_ELSTUSH00150619 = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\ELSTUSH00150619.csv')
 
+# Convert Date column to datetime
+df_ELSTUSH00150619['Date'] = pd.to_datetime(df_ELSTUSH00150619['Date'])
+
+# Add a Season column
+df_ELSTUSH00150619['Season'] = df_ELSTUSH00150619['Date'].dt.month.apply(get_season)
+
+# Define a function to calculate additional statistics
+def additional_stats(group):
+    elst = group['ELST']
+    ush00150619 = group['USH00150619']
+    abs_diff = np.abs(elst - ush00150619)
+    mean_diff = np.mean(elst - ush00150619)
+    rmse = np.sqrt(np.mean((elst - ush00150619) ** 2))
+    mae = np.mean(abs_diff)
+    std_error = np.std(elst - ush00150619) / np.sqrt(len(elst))
+    std_dev = np.std(elst - ush00150619)
+    var = np.var(elst - ush00150619)
+    correlation = np.corrcoef(elst, ush00150619)[0, 1]
+    elst_std_error = np.std(elst) / np.sqrt(len(elst))
+    ush00150619_std_error = np.std(ush00150619) / np.sqrt(len(ush00150619))
+    
+    return pd.Series({
+        'ELST_mean': elst.mean(),
+        'USH00150619_mean': ush00150619.mean(),
+        'Abs_Diff_Mean': abs_diff.mean(),
+        'Mean_Diff': mean_diff,
+        'RMSE': rmse,
+        'MAE': mae,
+        'Std_Error': std_error,
+        'Std_Dev': std_dev,
+        'Variance': var,
+        'Correlation': correlation,
+        'ELST_Std_Error': elst_std_error,
+        'USH00150619_Std_Error': ush00150619_std_error
+    })
+
+# Group by season and calculate descriptive statistics
+seasonal_stats = df_ELSTUSH00150619.groupby('Season').apply(additional_stats).reset_index()
+
+# Display the results
+print(seasonal_stats)
+================================================================================================================================================================================================================================================
+#OLD METHOD KYMN DAILY PRCP TO 8 AM TO MATCH 0800 AM COOP SITES
+import pandas as pd
+
+# Load the data
+ELST = pd.read_csv(r"C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\AA\Eastern\output_data_ELST.csv")
+
+# Convert 'LocalTimestampCollected' to datetime
+ELST['LocalTimestampCollected'] = pd.to_datetime(ELST['LocalTimestampCollected'])
+
+# Set 'LocalTimestampCollected' as the index of the DataFrame
+ELST.set_index('LocalTimestampCollected', inplace=True)
+
+# Slice the DataFrame to start from row 104965
+ELST = ELST.iloc[104965:]
+
+# Initialize an empty DataFrame to hold the results
+results = pd.DataFrame(columns=['Start', 'End', 'PRCP_Sum'])
+
+# Ensure the DataFrame is sorted by index
+ELST = ELST.sort_index()
+
+# Function to get the next 24-hour period's sum starting at 08:00
+def get_24hr_prcp_sum(df, start_time):
+    end_time = start_time + pd.Timedelta(days=1)
+    end_of_day = start_time.replace(hour=23, minute=59, second=59)
+    start_of_next_day = end_time.replace(hour=0, minute=0, second=0)
+    end_of_period = end_time.replace(hour=7, minute=59, second=59)
+    
+    # Get the part1 data from 08:00 AM to 11:59 PM of the start_time day
+    part1 = df[start_time:end_of_day].between_time('08:00', '23:59', inclusive='both')
+    
+    # Get the part2 data from 12:00 AM to 07:59 AM of the next day
+    part2 = df[start_of_next_day:end_of_period].between_time('00:00', '07:59', inclusive='both')
+    
+    # Combine the parts
+    combined = pd.concat([part1, part2])
+    
+    # Calculate the sum of PRCP for the combined parts
+    prcp_sum = combined['PRCP'].sum()
+    
+    return prcp_sum
+
+# Get the initial start time
+start_time = pd.Timestamp('2010-12-31 08:00:00')
+
+# Loop through the DataFrame to get sums for each 24-hour period until 2020-12-31
+while start_time < pd.Timestamp('2020-12-31 08:00:00'):
+    prcp_sum = get_24hr_prcp_sum(ELST, start_time)
+    
+    # Append the result to the results DataFrame
+    results = results.append({'Start': start_time, 'End': start_time + pd.Timedelta(days=1), 'PRCP_Sum': prcp_sum}, ignore_index=True)
+    
+    # Move to the next 24-hour period
+    start_time = start_time + pd.Timedelta(days=1)
+
+print(results)
+results.to_excel('C:\\Users\\olf42060\\OneDrive - Western Kentucky University\\Desktop\\AA\\Eastern\\PRCP_24hr_sums.xlsx', index=False)
+================================================================================================================================================================================================================================================
+#PRECIPITATION TOTALS AND SAVE TO EXCEL FILE
+import pandas as pd
+
+# Define the file path (assuming the Excel file is accessible)
+SCTV_SCTK2 = pd.read_excel(r"C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\precip.xlsx")
+print (SCTV_SCTK2)
+
+# Parse the date column
+SCTV_SCTK2['Date'] = pd.to_datetime(SCTV_SCTK2['Date'])
+
+# Resample the DataFrame to monthly intervals and sum the precipitation within each interval
+SCTV_SCTK2.set_index('Date', inplace=True)
+monthly_totals = SCTV_SCTK2.resample('M').sum()
+
+# Define a function to map months to seasons
+def month_to_season(month):
+    if month in [12, 1, 2]:
+        return 'Winter'
+    elif month in [3, 4, 5]:
+        return 'Spring'
+    elif month in [6, 7, 8]:
+        return 'Summer'
+    elif month in [9, 10, 11]:
+        return 'Fall'
+
+# Apply the function to create a Season column
+monthly_totals['Season'] = monthly_totals.index.month.map(month_to_season)
+
+# Group by season and compute the seasonal totals
+seasonal_totals = monthly_totals.groupby('Season').sum()
+
+print(seasonal_totals)
+================================================================================================================================================================================================================================================
+#ADJUSTED PRNC TO MATCH PCTK2 @ 1700
+import pandas as pd
+
+# Load the data
+PRNC = pd.read_csv(r"C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\AA\Central\output_data_PRNC.csv")
+
+# Convert 'LocalTimestampCollected' to datetime
+PRNC['LocalTimestampCollected'] = pd.to_datetime(PRNC['LocalTimestampCollected'])
+
+# Set 'LocalTimestampCollected' as the index of the DataFrame
+PRNC.set_index('LocalTimestampCollected', inplace=True)
+
+# Slice the DataFrame to start from row 105101
+PRNC = PRNC.iloc[105101:]
+
+# Initialize an empty DataFrame to hold the results
+results = pd.DataFrame(columns=['Start', 'End', 'PRCP_Sum'])
+
+# Ensure the DataFrame is sorted by index
+PRNC = PRNC.sort_index()
+
+# Function to get the next 24-hour period's sum starting at 17:00
+def get_24hr_prcp_sum(df, start_time):
+    end_time = start_time + pd.Timedelta(days=1)
+    end_of_day = start_time.replace(hour=23, minute=59, second=59)
+    start_of_next_day = end_time.replace(hour=0, minute=0, second=0)
+    end_of_period = end_time.replace(hour=16, minute=59, second=59)
+    
+    # Get the part1 data from 17:00 AM to 11:59 PM of the start_time day
+    part1 = df[start_time:end_of_day].between_time('17:00', '23:59', inclusive='both')
+    
+    # Get the part2 data from 12:00 AM to 16:59 AM of the next day
+    part2 = df[start_of_next_day:end_of_period].between_time('00:00', '16:59', inclusive='both')
+    
+    # Combine the parts
+    combined = pd.concat([part1, part2])
+    
+    # Calculate the sum of PRCP for the combined parts
+    prcp_sum = combined['PRCP'].sum()
+    
+    return prcp_sum
+
+# Get the initial start time
+start_time = pd.Timestamp('2010-12-31 17:00:00')
+
+# Loop through the DataFrame to get sums for each 24-hour period until 2020-12-31
+while start_time < pd.Timestamp('2020-12-31 17:00:00'):
+    prcp_sum = get_24hr_prcp_sum(PRNC, start_time)
+    
+    # Append the result to the results DataFrame
+    results = results.append({'Start': start_time, 'End': start_time + pd.Timedelta(days=1), 'PRCP_Sum': prcp_sum}, ignore_index=True)
+    
+    # Move to the next 24-hour period
+    start_time = start_time + pd.Timedelta(days=1)
+
+print(results)
+results.to_excel('C:\\Users\\olf42060\\OneDrive - Western Kentucky University\\Desktop\\AA\\Central\\PRCP_24hr_sums.xlsx', index=False)
+================================================================================================================================================================================================================================================
+# MEAN SQUARED DIFF OF DAILY PRECIPITATION
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Define the first dataset (SCTV, RSVL, etc.)
+data1 = {
+    'KYMN': ['SCTV', 'RSVL', 'RPTN', 'BTCK', 'HRDB', 'MRHD', 'LSML', 'MROK', 'GRHM', 'PGHL', 'ELST', 'FCHV', 'WNCH', 'FRNY', 'SCTV', 'ERLN', 'BNVL', 'CRMT', 'BLRK'],
+    'COOP': ['SCTK2', 'RUSK2', 'MRNK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2'],
+    'Distance': [1.23, 2.88, 5.63, 8.48, 10.85, 11.76, 11.94, 12.83, 14.05, 15.56, 16.22, 16.98, 18.55, 18.88, 18.92, 20.30, 20.40, 21.4, 21.59],
+    'Mean Squared Difference': [0.27, 0.15, 0.05, 0.12, 0.01, 0.00, 0.03, 0.01, 0.12, 0.31, 0.14, 0.76, 0.83, 0.03, 0.09, 0.72, 0.49, 0.31, 0.29]
+}
+
+# Define the second dataset (FARM, QKSD, etc.)
+data2 = {
+    'KYMN': ['FARM', 'QKSD', 'LSML', 'HUEY', 'LXGN', 'HHTS', 'PVRT'],
+    'COOP': ['BWG', 'JKL', 'FFT', 'CVG', 'LEX', 'CVG', 'OWB'],
+    'Distance': [5.89, 6.34, 7.86, 9.50, 9.68, 17.18, 21.61],
+    'Mean Squared Difference': [0.13, 0.08, 0.08, 0.14, 0.10, 0.05, 1.32]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+# Create the scatter plot
+plt.figure(figsize=(10, 6))
+
+# Plot the first dataset
+plt.scatter(df1['Distance'], df1['Mean Squared Difference'], color='blue', s=250, alpha=0.7, label='KYMN–COOP')
+
+# Plot the second dataset
+plt.scatter(df2['Distance'], df2['Mean Squared Difference'], color='green', s=250, alpha=0.7, marker='s', label='KYMN–ASOS')
+
+# Add annotations for the first dataset
+for i, row in df1.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Mean Squared Difference']), fontsize=12, ha='right')
+
+# Add annotations for the second dataset
+for i, row in df2.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Mean Squared Difference']), fontsize=12, ha='right')
+
+# Add labels and title
+plt.xlabel('Distance (km)', fontsize=20)
+plt.ylabel('Squared mean daily precipitation difference (mm²)', fontsize=14.5)
+plt.ylim(0, 2) 
+#plt.yticks(range(0, 3, 1))
+plt.tick_params(axis='both', labelsize=14)
+#plt.title('Scatter Plot of Distance vs Correlation')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.legend(fontsize=16)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\corrplot.png', dpi=360, bbox_inches='tight')
+================================================================================================================================================================================================================================================
+
+# MEAN SQUARED DIFF OF MONTHLY PRECIPITATION
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Define the first dataset (SCTV, RSVL, etc.)
+data1 = {
+    'KYMN': ['SCTV', 'RSVL', 'RPTN', 'BTCK', 'HRDB', 'MRHD', 'LSML', 'MROK', 'GRHM', 'PGHL', 'ELST', 'FCHV', 'WNCH', 'FRNY', 'SCTV', 'ERLN', 'BNVL', 'CRMT', 'BLRK'],
+    'COOP': ['SCTK2', 'RUSK2', 'MRNK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2'],
+    'Distance': [1.23, 2.88, 5.63, 8.48, 10.85, 11.76, 11.94, 12.83, 14.05, 15.56, 16.22, 16.98, 18.55, 18.88, 18.92, 20.30, 20.40, 21.4, 21.59],
+    'Mean Squared Difference': [40.0689, 24.4036, 7.4529, 21.9024, 2.0449, 0.1296, 4.7524, 1.8496, 16.4025, 51.6961, 24.8004, 140.8969, 160.0225,
+                                3.61, 14.3641, 118.1569, 104.6529, 51.6961, 48.7204]
+}
+
+# Define the second dataset (FARM, QKSD, etc.)
+data2 = {
+    'KYMN': ['FARM', 'QKSD', 'LSML', 'HUEY', 'LXGN', 'HHTS', 'PVRT'],
+    'COOP': ['BWG', 'JKL', 'FFT', 'CVG', 'LEX', 'CVG', 'OWB'],
+    'Distance': [5.89, 6.34, 7.86, 9.50, 9.68, 17.18, 21.61],
+    'Mean Squared Difference': [19.0969, 15.6816, 13.5424, 23.04, 16.6464, 8.41, 151.29]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+# Create the scatter plot
+plt.figure(figsize=(10, 6))
+
+# Plot the first dataset
+plt.scatter(df1['Distance'], df1['Mean Squared Difference'], color='blue', s=250, alpha=0.7, label='KYMN–COOP')
+
+# Plot the second dataset
+plt.scatter(df2['Distance'], df2['Mean Squared Difference'], color='green', s=250, alpha=0.7, marker='s', label='KYMN–ASOS')
+
+# Add annotations for the first dataset
+for i, row in df1.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Mean Squared Difference']), fontsize=12, ha='right')
+
+# Add annotations for the second dataset
+for i, row in df2.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Mean Squared Difference']), fontsize=12, ha='right')
+
+# Add labels and title
+plt.xlabel('Distance (km)', fontsize=20)
+plt.ylabel('Squared mean monthly precipitation difference (mm²)', fontsize=14)
+#plt.ylim(0, 2) 
+#plt.yticks(range(0, 3, 1))
+plt.tick_params(axis='both', labelsize=14)
+#plt.title('Scatter Plot of Distance vs Correlation')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.legend(fontsize=16)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\corrplot.png', dpi=360, bbox_inches='tight')
+
+================================================================================================================================================================================================================================================
+#MEAN DAILY DIFFERENCE IN PRECIP PLOTTED AS A FUNTION OF WINDSPEED (OTT VS SRG)
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\KYMNCOOP_wspd_OTT\KYMNCOOP_wspd_OTT.csv')
+
+# Ensure the columns 'KYMN', 'COOP', and 'WSPD' are numeric
+df['KYMN'] = pd.to_numeric(df['KYMN'], errors='coerce')
+df['COOP'] = pd.to_numeric(df['COOP'], errors='coerce')
+df['WSPD'] = pd.to_numeric(df['WSPD'], errors='coerce')
+
+# Convert the 'Date' column to datetime if it exists
+if 'Date' in df.columns:
+    df['Date'] = pd.to_datetime(df['Date'])
+else:
+    df['Date'] = pd.to_datetime(df['LocalTimestampCollected']).dt.date
+
+# Drop rows with NaN values after conversion
+df.dropna(subset=['KYMN', 'COOP', 'WSPD'], inplace=True)
+
+# Filter out days where both KYMN and COOP recorded zero
+df = df.groupby('Date').filter(lambda x: not ((x['KYMN'] == 0).all() and (x['COOP'] == 0).all()))
+
+# Define the bin assignment function for wind speed
+def assign_bin(WSPD):
+    if 0 < WSPD <= 2.5:    
+        return ">0 to 2.5"
+    elif 2.5 < WSPD <= 5:      
+        return ">2.5 to 5"
+    elif 5 < WSPD <= 7.5:     
+        return ">5 to 7.5"
+    elif 7.5 < WSPD <= 10:    
+        return ">7.5 to 10"
+    elif WSPD > 10:      
+        return ">10"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_COOP'] = df['KYMN'] - df['COOP']
+
+# Apply the binning function to 'WSPD' and set it as an ordered categorical type
+df['WSPD_Bin'] = df['WSPD'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = [">0 to 2.5", ">2.5 to 5", ">5 to 7.5", ">7.5 to 10", ">10"]
+
+# Convert 'WSPD_Bin' to an ordered categorical type
+df['WSPD_Bin'] = pd.Categorical(df['WSPD_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('WSPD_Bin')['KYMN_minus_COOP'].mean()
+
+# Calculate the sample size for each bin
+sample_size_per_bin = df.groupby('WSPD_Bin')['KYMN_minus_COOP'].count()
+
+# Print the dataframe for debugging
+print(df)
+
+# Plotting the bar chart
+plt.figure(figsize=(8, 4))
+ax = average_diff_per_bin.plot(kind='bar', color='grey', edgecolor='black')
+
+# Annotate sample sizes on top of each bar
+for i, (avg, count) in enumerate(zip(average_diff_per_bin, sample_size_per_bin)):
+    if avg >= 0:
+        ax.text(i, avg + 0.1, f'{count}', ha='center', va='bottom', fontsize=14)
+    else:
+        ax.text(i, avg - 0.1, f'{count}', ha='center', va='top', fontsize=14)    
+
+plt.xlabel('WSPD (m/s)', fontsize=14)
+plt.ylabel('Average KYMN - COOP (mm)', fontsize=14)
+# Optional title
+# plt.title('Average KYMN - COOP vs WSPD Binned Values')
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=16)
+plt.ylim(-5, 5)  # Adjust based on your data range
+plt.yticks(fontsize=16)
+
+# Save the plot to a file
+# plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\BARS3\KYMNASOS.png', dpi=300, bbox_inches='tight')
+
+# Show the plot
+plt.show()
+
+#SCATTERPLOT SHOWING CORRELATION VS DISTANCE
+================================================================================================================================================================================================================================================
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Define the first dataset (SCTV, RSVL, etc.)
+data1 = {
+    'KYMN': ['SCTV', 'RSVL', 'PRNC', 'RNDH', 'RPTN', 'PVRT', 'FARM', 'BTCK', 'HRDB', 'MRHD', 'LSML', 'MROK', 'GRHM', 'PGHL', 'ELST', 'FCHV', 'WNCH', 'FRNY', 'SCTV', 'VEST', 'ERLN', 'BNVL', 'CRMT', 'BLRK'],
+    'COOP': ['SCTK2', 'RUSK2', 'PCTK2', 'KBLK2', 'MRNK2', 'CALK2', 'BWGK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CFLK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2'],
+    'Distance': [1.23, 2.88, 3.27, 4.57, 5.63, 7.29, 8.44, 8.48, 10.85, 11.76, 11.94, 12.83, 14.05, 15.56, 16.22, 16.98, 18.55, 18.88, 18.92, 19.66, 20.30, 20.40, 21.40, 21.59],
+    'Correlation': [0.984, 0.882, 0.730, 0.784, 0.869, 0.710, 0.809, 0.882, 0.836, 0.822, 0.891, 0.829, 0.855, 0.802, 0.866, 0.793, 0.769, 0.845, 0.808, 0.670, 0.810, 0.804, 0.795, 0.785]
+}
+
+# Define the second dataset (FARM, QKSD, etc.)
+data2 = {
+    'KYMN': ['FARM', 'QKSD', 'LSML', 'HUEY', 'LXGN', 'HHTS', 'PVRT'],
+    'COOP': ['BWG', 'JKL', 'FFT', 'CVG', 'LEX', 'CVG', 'OWB'],
+    'Distance': [5.89, 6.34, 7.86, 9.50, 9.68, 17.18, 21.61],
+    'Correlation': [0.902, 0.879, 0.904, 0.880, 0.854, 0.817, 0.771]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+# Create the scatter plot
+plt.figure(figsize=(10, 6))
+
+# Plot the first dataset
+plt.scatter(df1['Distance'], df1['Correlation'], color='blue', s=200, alpha=0.7, label='KYMN–COOP')
+
+# Plot the second dataset
+plt.scatter(df2['Distance'], df2['Correlation'], color='green', s=200, alpha=0.7, marker='s', label='KYMN–ASOS')
+
+# Add annotations for the first dataset
+for i, row in df1.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Correlation']), fontsize=12, ha='right')
+
+# Add annotations for the second dataset
+for i, row in df2.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Correlation']), fontsize=12, ha='right')
+
+# Add labels and title
+plt.xlabel('Distance (km)', fontsize=20)
+plt.ylabel('Correlation coefficient', fontsize=20)
+plt.tick_params(axis='both', labelsize=18)
+#plt.title('Scatter Plot of Distance vs Correlation')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.legend(fontsize=16)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\corrplot.png', dpi=360, bbox_inches='tight')
+================================================================================================================================================================================================================================================
+# MEAN DAILY DIFF IN PRECIPI PLOTTED AS A FUNTION OF TEMP
+#KYMN-ASOS
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\ASOS3\KYMNASOS_TAIR_WSPD.csv')
+
+# Ensure the columns 'KYMN', 'ASOS', and 'TAIR' are numeric
+df['KYMN'] = pd.to_numeric(df['KYMN'], errors='coerce')
+df['ASOS'] = pd.to_numeric(df['ASOS'], errors='coerce')
+df['TAIR'] = pd.to_numeric(df['TAIR'], errors='coerce')
+
+# Convert the 'Date' column to datetime if it exists
+if 'Date' in df.columns:
+    df['Date'] = pd.to_datetime(df['Date'])
+else:
+    df['Date'] = pd.to_datetime(df['LocalTimestampCollected']).dt.date
+
+# Drop rows with NaN values after conversion
+df.dropna(subset=['KYMN', 'ASOS', 'TAIR'], inplace=True)
+
+# Filter out days where both KYMN and ASOS recorded zero
+df = df.groupby('Date').filter(lambda x: not ((x['KYMN'] == 0).all() and (x['ASOS'] == 0).all()))
+
+# Define the bin assignment function
+def assign_bin(TAIR):
+    if TAIR < -4:                                 
+        return "<-4"
+    elif -4 <= TAIR < -3:  
+        return "-4 to -3"
+    elif -3 <= TAIR < -2:     
+        return "-3 to -2"
+    elif -2 <= TAIR < -1:     
+        return "-2 to -1"
+    elif -1 <= TAIR < 0:     
+        return "-1 to 0"
+    elif 0 <= TAIR < 1:    
+        return "0 to 1"
+    elif 1 <= TAIR < 2:      
+        return "1 to 2"
+    elif 2 <= TAIR < 3:     
+        return "2 to 3"
+    elif 3 <= TAIR < 4:     
+        return "3 to 4"
+    elif TAIR >= 4:      
+        return ">4"
+
+# Calculate the difference and create a new column 'KYMN_minus_ASOS'
+df['KYMN_minus_ASOS'] = df['KYMN'] - df['ASOS']
+
+# Apply the binning function to 'TAIR' and set it as an ordered categorical type
+df['TAIR_Bin'] = df['TAIR'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = ["<-4", "-4 to -3", "-3 to -2", "-2 to -1", "-1 to 0", "0 to 1", "1 to 2", "2 to 3", "3 to 4", ">4"]
+
+# Convert 'TAIR_Bin' to an ordered categorical type
+df['TAIR_Bin'] = pd.Categorical(df['TAIR_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_ASOS for each bin
+average_diff_per_bin = df.groupby('TAIR_Bin')['KYMN_minus_ASOS'].mean()
+
+# Calculate the sample size for each bin
+sample_size_per_bin = df.groupby('TAIR_Bin')['KYMN_minus_ASOS'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+bars = average_diff_per_bin.plot(kind='bar', color='red', edgecolor='black')
+
+# Add sample sizes at the top of each bar, or below for specified indices
+for idx, (bar, sample_size) in enumerate(zip(bars.patches, sample_size_per_bin)):
+    height = bar.get_height()
+    if idx in [0, 3, 4, 5, 6]:  # Adjust for specified indices
+        plt.text(
+            bar.get_x() + bar.get_width() / 2, height - 0.05,  # Shift text below the bar
+            f'{sample_size}', ha='center', va='top', fontsize=14
+        )
+    else:
+        plt.text(
+            bar.get_x() + bar.get_width() / 2, height,  # Default placement above the bar
+            f'{sample_size}', ha='center', va='bottom', fontsize=14
+        )
+
+
+# Customize plot
+plt.xlabel('TAIR (◦C)', fontsize=18)
+plt.ylabel('Average KYMN - ASOS (mm)', fontsize=18)
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=16)
+plt.ylim(-5, 5)  # Adjusted based on the data range
+plt.yticks(fontsize=16)
+
+# Save the plot to a file
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\KYMNASOSTAIR_with_sample_sizes.png', dpi=300, bbox_inches='tight')
+
+# Show the plot
+plt.show()
+================================================================================================================================================================================================================================================
+#MEAN DAILY DIFF IN PRECIP PLOTTED AS A FUNTION OF PRECIP (OVERALL)
+#KYMN-COOP
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\INVESTIGATION\19KYMNCOOP.csv')
+
+# Define the bin assignment function
+def assign_bin(value):
+    if value <= 2:
+        return "<=2"
+    elif 2 < value <= 4:
+        return "4"
+    elif 4 < value <= 6:
+        return "6"
+    elif 6 < value <= 8:
+        return "8"
+    elif 8 < value <= 10:
+        return "10"
+    elif 10 < value <= 12:
+        return "12"
+    elif 12 < value <= 14:
+        return "14"
+    elif 14 < value <= 16:
+        return "16"
+    elif 16 < value <= 18:
+        return "18"
+    elif 18 < value <= 20:
+        return "20"
+    elif 20 < value <= 22:
+        return "22"
+    elif 22 < value <= 24:
+        return "24"
+    elif 24 < value <= 26:
+        return "26"
+    elif 26 < value <= 28:
+        return "28"
+    elif 28 < value <= 30:
+        return "30"
+    elif 30 < value <= 32:
+        return "32"
+    elif 32 < value <= 34:
+        return "34"
+    elif 34 < value <= 36:
+        return "36"
+    elif 36 < value <= 38:
+        return "38"
+    elif 38 < value <= 40:
+        return "40"
+    elif 40 < value <= 42:
+        return "42"
+    elif 42 < value <= 44:
+        return "44"
+    elif 44 < value <= 46:
+        return "46"
+    elif 46 < value <= 48:
+        return "48"
+    elif 48 < value <= 50:
+        return "50"
+    elif value > 50:
+        return ">50"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_COOP'] = df['KYMN'] - df['COOP']
+
+# Apply the binning function to 'KYMN' and set it as an ordered categorical type
+df['KYMN_Bin'] = df['KYMN'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = [
+    "<=2", "4", "6", "8", "10", "12", "14", "16", "18", "20", 
+    "22", "24", "26", "28", "30", "32", "34", "36", "38", 
+    "40", "42", "44", "46", "48", "50", ">50"
+]
+
+# Convert 'KYMN_Bin' to an ordered categorical type
+df['KYMN_Bin'] = pd.Categorical(df['KYMN_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_COOP'].mean()
+
+# Calculate the count of data points in each bin
+bin_counts = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_COOP'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+ax = average_diff_per_bin.plot(kind='bar', color='skyblue', edgecolor='black')
+
+# Add only the sample sizes (without 'n=') on top or below each bar
+for i, count in enumerate(bin_counts):
+    if i < 7:  # First 7 bars, place the text below the bar
+        ax.text(i, average_diff_per_bin[i] - 0.5, f'{count}', ha='center', va='top', fontsize=11)
+    else:  # From the 8th bar onward, place the text above the bar
+        ax.text(i, average_diff_per_bin[i] + 0.2, f'{count}', ha='center', va='bottom', fontsize=11)
+
+# Customize the plot
+plt.xlabel('KYMN (mm)', fontsize=18)
+plt.ylabel('Average KYMN - COOP (mm)', fontsize=18)
+plt.grid(True, axis='y')
+plt.xticks(rotation=360, fontsize=16)
+plt.ylim(-10, 20)  # Adjust based on your data range
+plt.yticks(fontsize=16)
+plt.tight_layout()
+
+# Show the plot
+plt.show()
+
+
+================================================================================================================================================================================================================================================
+#MEAN DAILY DIFF IN PRECIP PLOTTED AS A FUNTION OF PRECIP (OVERALL)
+#OVERALL KYMN-ASOS
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\DEFENSE\KYMNASOS\KYMNASOS.csv')
+
+# Define the bin assignment function
+def assign_bin(value):
+    if value <= 2:
+        return "<=2"
+    elif 2 < value <= 4:
+        return "4"
+    elif 4 < value <= 6:
+        return "6"
+    elif 6 < value <= 8:
+        return "8"
+    elif 8 < value <= 10:
+        return "10"
+    elif 10 < value <= 12:
+        return "12"
+    elif 12 < value <= 14:
+        return "14"
+    elif 14 < value <= 16:
+        return "16"
+    elif 16 < value <= 18:
+        return "18"
+    elif 18 < value <= 20:
+        return "20"
+    elif 20 < value <= 22:
+        return "22"
+    elif 22 < value <= 24:
+        return "24"
+    elif 24 < value <= 26:
+        return "26"
+    elif 26 < value <= 28:
+        return "28"
+    elif 28 < value <= 30:
+        return "30"
+    elif 30 < value <= 32:
+        return "32"
+    elif 32 < value <= 34:
+        return "34"
+    elif 34 < value <= 36:
+        return "36"
+    elif 36 < value <= 38:
+        return "38"
+    elif 38 < value <= 40:
+        return "40"
+    elif 40 < value <= 42:
+        return "42"
+    elif 42 < value <= 44:
+        return "44"
+    elif 44 < value <= 46:
+        return "46"
+    elif 46 < value <= 48:
+        return "48"
+    elif 48 < value <= 50:
+        return "50"
+    elif value > 50:
+        return ">50"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_ASOS'] = df['KYMN'] - df['ASOS']
+
+# Apply the binning function to 'KYMN' and set it as an ordered categorical type
+df['KYMN_Bin'] = df['KYMN'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = [
+    "<=2", "4", "6", "8", "10", "12", "14", "16", "18", "20", 
+    "22", "24", "26", "28", "30", "32", "34", "36", "38", 
+    "40", "42", "44", "46", "48", "50", ">50"
+]
+
+# Convert 'KYMN_Bin' to an ordered categorical type
+df['KYMN_Bin'] = pd.Categorical(df['KYMN_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_ASOS'].mean()
+
+# Calculate the count of data points in each bin
+bin_counts = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_ASOS'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+ax = average_diff_per_bin.plot(kind='bar', color='skyblue', edgecolor='black')
+
+# Add only the sample sizes (without 'n=') on top or below each bar
+for i, count in enumerate(bin_counts):
+    if i in [0, 1, 2, 3, 4, 7]:  # Specify indices where the sample size should go below
+        ax.text(i, average_diff_per_bin[i] - 0.5, f'{count}', ha='center', va='top', fontsize=14)
+    elif i in [5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 20, 22, 23, 24, 25, 26, 27]:  # Specify indices where the sample size should go above
+        ax.text(i, average_diff_per_bin[i] + 0.2, f'{count}', ha='center', va='bottom', fontsize=14)
+    else:  # Default for remaining indices (if any)
+        ax.text(i, average_diff_per_bin[i] + 0.5, f'{count}', ha='center', va='bottom', fontsize=14)
+
+# Customize the plot
+plt.xlabel('KYMN (mm)', fontsize=18)
+plt.ylabel('Average KYMN - ASOS (mm)', fontsize=18)
+plt.grid(True, axis='y')
+plt.xticks(rotation=360, fontsize=16)
+plt.ylim(-10, 20)  # Adjust based on your data range
+plt.yticks(fontsize=16)
+plt.tight_layout()
+
+# Show the plot
+plt.show()
+
+================================================================================================================================================================================================================================================
+#MEAN DAILY DIFF IN PRECIP PLOTTED AS A FUNTION OF TEMP KYMN-ASOS
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\ASOS3\KYMNASOS_TAIR_WSPD.csv')
+
+# Ensure the columns 'KYMN', 'ASOS', and 'TAIR' are numeric
+df['KYMN'] = pd.to_numeric(df['KYMN'], errors='coerce')
+df['ASOS'] = pd.to_numeric(df['ASOS'], errors='coerce')
+df['TAIR'] = pd.to_numeric(df['TAIR'], errors='coerce')
+
+# Convert the 'Date' column to datetime if it exists
+if 'Date' in df.columns:
+    df['Date'] = pd.to_datetime(df['Date'])
+else:
+    df['Date'] = pd.to_datetime(df['LocalTimestampCollected']).dt.date
+
+# Drop rows with NaN values after conversion
+df.dropna(subset=['KYMN', 'ASOS', 'TAIR'], inplace=True)
+
+# Filter out days where both KYMN and ASOS recorded zero
+df = df.groupby('Date').filter(lambda x: not ((x['KYMN'] == 0).all() and (x['ASOS'] == 0).all()))
+
+# Define the bin assignment function
+def assign_bin(TAIR):
+    if TAIR < -4:                                 
+        return "<-4"
+    elif -4 <= TAIR < -3:  
+        return "-4 to -3"
+    elif -3 <= TAIR < -2:     
+        return "-3 to -2"
+    elif -2 <= TAIR < -1:     
+        return "-2 to -1"
+    elif -1 <= TAIR < 0:     
+        return "-1 to 0"
+    elif 0 <= TAIR < 1:    
+        return "0 to 1"
+    elif 1 <= TAIR < 2:      
+        return "1 to 2"
+    elif 2 <= TAIR < 3:     
+        return "2 to 3"
+    elif 3 <= TAIR < 4:     
+        return "3 to 4"
+    elif TAIR >= 4:      
+        return ">4"
+
+# Calculate the difference and create a new column 'KYMN_minus_ASOS'
+df['KYMN_minus_ASOS'] = df['KYMN'] - df['ASOS']
+
+# Apply the binning function to 'TAIR' and set it as an ordered categorical type
+df['TAIR_Bin'] = df['TAIR'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = ["<-4", "-4 to -3", "-3 to -2", "-2 to -1", "-1 to 0", "0 to 1", "1 to 2", "2 to 3", "3 to 4", ">4"]
+
+# Convert 'TAIR_Bin' to an ordered categorical type
+df['TAIR_Bin'] = pd.Categorical(df['TAIR_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_ASOS for each bin
+average_diff_per_bin = df.groupby('TAIR_Bin')['KYMN_minus_ASOS'].mean()
+
+# Calculate the sample size for each bin
+sample_size_per_bin = df.groupby('TAIR_Bin')['KYMN_minus_ASOS'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+bars = average_diff_per_bin.plot(kind='bar', color='red', edgecolor='black')
+
+# Add sample sizes at the top of each bar, or below for specified indices
+for idx, (bar, sample_size) in enumerate(zip(bars.patches, sample_size_per_bin)):
+    height = bar.get_height()
+    if idx in [0, 3, 4, 5, 6]:  # Adjust for specified indices
+        plt.text(
+            bar.get_x() + bar.get_width() / 2, height - 0.05,  # Shift text below the bar
+            f'{sample_size}', ha='center', va='top', fontsize=14
+        )
+    else:
+        plt.text(
+            bar.get_x() + bar.get_width() / 2, height,  # Default placement above the bar
+            f'{sample_size}', ha='center', va='bottom', fontsize=14
+        )
+
+
+# Customize plot
+plt.xlabel('TAIR (◦C)', fontsize=18)
+plt.ylabel('Average KYMN - ASOS (mm)', fontsize=18)
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=16)
+plt.ylim(-5, 5)  # Adjusted based on the data range
+plt.yticks(fontsize=16)
+
+# Save the plot to a file
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\KYMNASOSTAIR_with_sample_sizes.png', dpi=300, bbox_inches='tight')
+
+# Show the plot
+plt.show()
+================================================================================================================================================================================================================================================
+#10042024 FINAL KYMNCOOP PRCP BY TAIR SAMPLE SIZES (19 GOOD CORRELATED WELL ADJUSTED SAMPLE SIZES ON BARS)
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\KYMNCOOPTAIR2.csv')
+
+# Ensure the columns 'KYMN', 'COOP', and 'TAIR' are numeric
+df['KYMN'] = pd.to_numeric(df['KYMN'], errors='coerce')
+df['COOP'] = pd.to_numeric(df['COOP'], errors='coerce')
+df['TAIR'] = pd.to_numeric(df['TAIR'], errors='coerce')
+
+# Convert the 'Date' column to datetime if it exists
+if 'Date' in df.columns:
+    df['Date'] = pd.to_datetime(df['Date'])
+else:
+    df['Date'] = pd.to_datetime(df['LocalTimestampCollected']).dt.date
+
+# Drop rows with NaN values after conversion
+df.dropna(subset=['KYMN', 'COOP', 'TAIR'], inplace=True)
+
+# Filter out days where both KYMN and COOP recorded zero
+df = df.groupby('Date').filter(lambda x: not ((x['KYMN'] == 0).all() and (x['COOP'] == 0).all()))
+
+# Define the bin assignment function
+def assign_bin(TAIR):
+    if TAIR < -4:                                 
+        return "<-4"
+    elif -4 <= TAIR < -3:  
+        return "-4 to -3"
+    elif -3 <= TAIR < -2:     
+        return "-3 to -2"
+    elif -2 <= TAIR < -1:     
+        return "-2 to -1"
+    elif -1 <= TAIR < 0:     
+        return "-1 to 0"
+    elif 0 <= TAIR < 1:    
+        return "0 to 1"
+    elif 1 <= TAIR < 2:      
+        return "1 to 2"
+    elif 2 <= TAIR < 3:     
+        return "2 to 3"
+    elif 3 <= TAIR < 4:     
+        return "3 to 4"
+    elif TAIR >= 4:      
+        return ">4"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_COOP'] = df['KYMN'] - df['COOP']
+
+# Apply the binning function to 'TAIR' and set it as an ordered categorical type
+df['TAIR_Bin'] = df['TAIR'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = ["<-4", "-4 to -3", "-3 to -2", "-2 to -1", "-1 to 0", "0 to 1", "1 to 2", "2 to 3", "3 to 4", ">4"]
+
+# Convert 'TAIR_Bin' to an ordered categorical type
+df['TAIR_Bin'] = pd.Categorical(df['TAIR_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('TAIR_Bin')['KYMN_minus_COOP'].mean()
+
+# Calculate the sample size for each bin
+sample_size_per_bin = df.groupby('TAIR_Bin')['KYMN_minus_COOP'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+bars = average_diff_per_bin.plot(kind='bar', color='red', edgecolor='black')
+
+# Add sample sizes at the top of each bar, or below for specified indices
+for idx, (bar, sample_size) in enumerate(zip(bars.patches, sample_size_per_bin)):
+    height = bar.get_height()
+    if idx in [0, 1, 3, 4, 6, 7, 8, 9]:  # Adjust for specified indices
+        plt.text(
+            bar.get_x() + bar.get_width() / 2, height - 0.05,  # Shift text below the bar
+            f'{sample_size}', ha='center', va='top', fontsize=14
+        )
+    else:
+        plt.text(
+            bar.get_x() + bar.get_width() / 2, height,  # Default placement above the bar
+            f'{sample_size}', ha='center', va='bottom', fontsize=14
+        )
+
+
+# Customize plot
+plt.xlabel('TAIR (◦C)', fontsize=18)
+plt.ylabel('Average KYMN - COOP (mm)', fontsize=18)
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=16)
+plt.ylim(-5, 5)
+plt.yticks(fontsize=16)
+# Save the plot to a file
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\KYMNCOOPTAIR_with_samples_on_top.png', dpi=300, bbox_inches='tight')
+
+# Show the plot
+plt.show()
+================================================================================================================================================================================================================================================
+#WELCH'S T-TEST
+
+import pandas as pd
+from scipy.stats import ttest_ind
+
+# Load the dataset
+#df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\INVESTIGATION\VRGOTT_KYMNASOS.csv')
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\INVESTIGATION\filtered_KYMNL_less_18.csv')
+
+# Convert KYMN and COOP to numeric, coercing errors to NaN
+df['KYMN'] = pd.to_numeric(df['KYMN'], errors='coerce')
+df['COOP'] = pd.to_numeric(df['COOP'], errors='coerce')
+
+# Drop rows with NaN values in KYMN or COOP
+df_clean = df.dropna(subset=['KYMN', 'COOP'])
+
+# Extract cleaned KYMN and COOP values
+kymn_values = df_clean['KYMN']
+coop_values = df_clean['COOP']
+
+# Perform an independent t-test
+t_stat, p_value = ttest_ind(kymn_values, coop_values, equal_var=False)
+
+# Print the results
+print(f"t-statistic: {t_stat}, p-value: {p_value}")
+
+#WELCH'S T-TEST 2
+
+import pandas as pd
+from scipy.stats import ttest_ind
+
+# Load the dataset
+#df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\INVESTIGATION\VRGOTT_KYMNASOS.csv')
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\INVESTIGATION\filtered_KYMNL_less_18.csv')
+
+# Convert KYMN and COOP to numeric, coercing errors to NaN
+df['KYMN'] = pd.to_numeric(df['KYMN'], errors='coerce')
+df['COOP'] = pd.to_numeric(df['COOP'], errors='coerce')
+
+# Drop rows with NaN values in KYMN or COOP
+df_clean = df.dropna(subset=['KYMN', 'COOP'])
+
+# Extract cleaned KYMN and COOP values
+kymn_values = df_clean['KYMN']
+coop_values = df_clean['COOP']
+
+# Perform an independent t-test
+t_stat, p_value = ttest_ind(kymn_values, coop_values, equal_var=False)
+
+# Print the results
+print(f"t-statistic: {t_stat}, p-value: {p_value}")
+
+================================================================================================================================================================================================================================================
+#PERCENTAGE OF DAYS WITH PRECIPITATION BY KYMN AND COOP STATIONS
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Define the first dataset (COOP stations)
+data1 = {
+    'Station': ['SCTK2', 'RUSK2', 'MRNK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 
+                'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2'],
+    '% of days with precip': [42.9, 38.58, 36.71, 42.49, 36.74, 45.96, 37.71, 35.79, 32.94, 38.19, 49.46, 39.34, 41.63, 32.94, 
+                        35.79, 38.18, 48.42, 48.89, 37.28]
+}
+
+# Define the second dataset (ASOS stations)
+data2 = {
+    'Station': ['SCTV', 'RSVL', 'RPTN', 'BTCK', 'HRDB', 'MRHD', 'LSML', 'MROK', 'GRHM', 'PGHL', 'ELST', 'FCHV', 'WNCH', 'FRNY',
+                'SCTV', 'ERLN', 'BNVL', 'CRMT', 'BLRK'],
+    '% of days with precip': [38.19, 38.77, 36.79, 42.96, 39.57, 41.46, 39.58, 37.49, 35.32, 37.48, 39.76, 39.29, 39.97, 36.01, 
+                        37.82, 36.64, 41.71, 37.28, 38.16]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+# Define the preferred station order manually
+preferred_order = [
+    'SCTV', 'SCTK2', 'RSVL', 'RUSK2', 'RPTN', 'MRNK2', 'BTCK', 'PNVK2', 'HRDB', 'DIXK2', 'MRHD', 'CRLK2', 'LSML', 'VSLK2', 
+    'MROK', 'BRRK2', 'GRHM', 'HNDK2', 'PGHL', 'CRFK2', 'ELST', 'CSYK2', 'FCHV', 'TVLK2', 'WNCH', 'PRSK2', 'FRNY', 'HNDK2', 
+    'SCTV', 'BRRK2', 'ERLN', 'CRFK2', 'BNVL', 'BCAK2', 'CRMT', 'LMK', 'BLRK', 'NOLK2'
+]
+
+# Create dictionaries for easy lookup
+coop_dict = dict(zip(df1['Station'], df1['% of days with precip']))
+kymn_dict = dict(zip(df2['Station'], df2['% of days with precip']))
+
+# Fill missing values with NaN based on preferred order
+coop_values = [coop_dict.get(station, np.nan) for station in preferred_order]
+kymn_values = [kymn_dict.get(station, np.nan) for station in preferred_order]
+
+# Create bar positions
+bar_width = 0.4
+x = np.arange(len(preferred_order))  # Common x-axis positions
+
+# Create the figure
+plt.figure(figsize=(10, 5))
+
+# Plot COOP bars
+plt.bar(x - bar_width/2, coop_values, width=bar_width, color='blue', alpha=0.7, label='COOP')
+
+# Plot ASOS bars
+plt.bar(x + bar_width/2, kymn_values, width=bar_width, color='red', alpha=0.7, label='KYMN')
+
+# Add labels
+plt.xlabel('Stations', fontsize=14)
+plt.ylabel('% of days with precipitation', fontsize=14)
+
+# Set x-ticks to show station names
+plt.xticks(x, preferred_order, rotation=45, ha='right')
+
+# Add grid and legend
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.legend(fontsize=8)
+
+# Show plot
+plt.tight_layout()
+plt.show()
+================================================================================================================================================================================================================================================
+#PERCENTAGE OF DAYS WITH PRECIPITATION BY KYMN AND ASOS STATIONS
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Define the first dataset (COOP stations)
+data1 = {
+    'Station': ['FARM', 'QKSD', 'LSML', 'HUEY', 'LXGN', 'HHTS', 'PVRT'],
+    '% of days with precip': [36.75, 42.18, 39.37, 39.98, 38.25, 39.49, 42.02]
+}
+
+# Define the second dataset (ASOS stations)
+data2 = {
+    'Station': ['BWG', 'JKL', 'FFT', 'CVG', 'LEX', 'CVG', 'OWB'],
+    '% of days with precip': [44.69, 52.2, 46.25, 51.86, 52.93, 51.86, 48.22]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+# Define the preferred station order manually
+preferred_order = ['FARM', 'BWG', 'QKSD', 'JKL', 'LSML', 'FFT', 'HUEY', 'CVG', 'LXGN', 'LEX', 'HHTS', 'CVG', 'PVRT', 'OWB']
+
+# Create dictionaries for easy lookup
+kymn_dict = dict(zip(df1['Station'], df1['% of days with precip']))
+asos_dict = dict(zip(df2['Station'], df2['% of days with precip']))
+
+# Fill missing values with NaN based on preferred order
+kymn_values = [kymn_dict.get(station, np.nan) for station in preferred_order]
+asos_values = [asos_dict.get(station, np.nan) for station in preferred_order]
+
+# Create bar positions
+bar_width = 0.3
+x = np.arange(len(preferred_order))  # Common x-axis positions
+
+# Create the figure
+plt.figure(figsize=(8, 4))
+
+# Plot KYMN bars
+plt.bar(x - bar_width/2, kymn_values, width=bar_width, color='red', alpha=0.7, label='KYMN')
+
+# Plot ASOS bars
+plt.bar(x + bar_width/2, asos_values, width=bar_width, color='green', alpha=0.7, label='ASOS')
+
+
+# Add labels
+plt.xlabel('Stations', fontsize=14)
+plt.ylabel('% of days with precipitation', fontsize=14)
+
+# Set x-ticks to show station names
+plt.xticks(x, preferred_order, rotation=45, ha='right')
+
+# Add grid and legend
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+#plt.legend(fontsize=8)
+plt.legend(fontsize=8, loc='center right', bbox_to_anchor=(1, 0.935))
+
+
+# Show plot
+plt.tight_layout()
+plt.show()
+================================================================================================================================================================================================================================================
+# PERCENTAGE OF TRACE DAYS BY COOP AND ASOS STATIONS
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Define the first dataset (COOP stations)
+data1 = {
+    'Station': ['SCTK2', 'RUSK2', 'MRNK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 
+                'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2'],
+    '% of trace days': [5.69, 0.08, 4.42, 3.55, 0.34, 0.88, 0.00, 0.00, 0.03, 0.08, 9.43, 0.27, 0.25, 0.03, 
+                        0.00, 0.08, 5.32, 10.68, 0.03]
+}
+
+# Define the second dataset (ASOS stations)
+data2 = {
+    'Station': ['BWG', 'JKL', 'FFT', 'CVG', 'LEX', 'CVG', 'OWB'],
+    '% of trace days': [8.27, 10.76, 7.15, 14.29, 15.34, 14.29, 7.68]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+preferred_order = ['SCTK2', 'RUSK2', 'MRNK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 
+                'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2', 'BWG', 'JKL', 'FFT', 
+                'CVG', 'LEX', 'CVG', 'OWB']
+
+# Combine unique station names from both datasets
+all_stations = sorted(set(df1['Station']).union(set(df2['Station'])))
+
+# Create dictionaries for easy lookup
+coop_dict = dict(zip(df1['Station'], df1['% of trace days']))
+asos_dict = dict(zip(df2['Station'], df2['% of trace days']))
+
+# Fill missing values with NaN
+coop_values = [coop_dict.get(station, np.nan) for station in preferred_order]
+asos_values = [asos_dict.get(station, np.nan) for station in preferred_order]
+
+# Create bar positions
+bar_width = 0.4
+x = np.arange(len(preferred_order))  # Common x-axis positions
+
+# Create the figure
+plt.figure(figsize=(8, 4))
+
+# Plot COOP bars
+plt.bar(x - bar_width/2, coop_values, width=bar_width, color='blue', alpha=0.7, label='COOP')
+
+# Plot ASOS bars
+plt.bar(x + bar_width/2, asos_values, width=bar_width, color='green', alpha=0.7, label='ASOS')
+
+# Add labels
+plt.xlabel('Stations', fontsize=14)
+plt.ylabel('% of Trace Days', fontsize=14)
+#plt.title('Percentage of Trace Days by Network', fontsize=14)
+
+
+# Set x-ticks to show station names
+plt.xticks(x, preferred_order, rotation=45, ha='right')
+
+# Add grid and legend
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+#plt.legend(fontsize=10)
+plt.legend(fontsize=8, loc='center right', bbox_to_anchor=(1, 0.935))
+
+
+# Show plot
+plt.tight_layout()
+plt.show()
+
+================================================================================================================================================================================================================================================
+# MONTHLY CORRELATION WITH DISTANCE
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+
+# Define the first dataset (SCTV, RSVL, etc.)
+data1 = {
+    'KYMN': ['SCTV', 'RSVL', 'RPTN', 'BTCK', 'HRDB', 'MRHD', 'LSML', 'MROK', 'GRHM', 'PGHL', 'ELST', 'FCHV', 'WNCH', 'FRNY', 'SCTV', 'ERLN', 'BNVL', 'CRMT', 'BLRK'],
+    'COOP': ['SCTK2', 'RUSK2', 'MRNK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2'],
+    'Distance': [1.23, 2.88, 5.63, 8.48, 10.85, 11.76, 11.94, 12.83, 14.05, 15.56, 16.22, 16.98, 18.55, 18.88, 18.92, 20.30, 20.40, 21.40, 21.59],
+    'Correlation': [0.993, 0.911, 0.926, 0.940, 0.898, 0.893, 0.931, 0.883, 0.929, 0.899, 0.937, 0.872, 0.844, 0.911, 0.904, 0.877, 0.877, 0.870, 0.863]
+}
+
+# Define the second dataset (FARM, QKSD, etc.)
+data2 = {
+    'KYMN': ['FARM', 'QKSD', 'LSML', 'HUEY', 'LXGN', 'HHTS', 'PVRT'],
+    'COOP': ['BWG', 'JKL', 'FFT', 'CVG', 'LEX', 'CVG', 'OWB'],
+    'Distance': [5.89, 6.34, 7.86, 9.50, 9.68, 17.18, 21.61],
+    'Correlation': [0.933, 0.930, 0.929, 0.925, 0.874, 0.818, 0.843]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+# Create the scatter plot
+plt.figure(figsize=(10, 6))
+
+# Plot the first dataset
+plt.scatter(df1['Distance'], df1['Correlation'], color='blue', s=200, alpha=0.7, label='KYMN–COOP')
+
+# Plot the second dataset
+plt.scatter(df2['Distance'], df2['Correlation'], color='green', s=200, alpha=0.7, marker='s', label='KYMN–ASOS')
+
+# Add annotations for the first dataset
+for i, row in df1.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Correlation']), fontsize=10, ha='right')
+
+# Add annotations for the second dataset
+for i, row in df2.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Correlation']), fontsize=10, ha='right')
+
+# Add labels and title
+plt.xlabel('Distance (km)', fontsize=16)
+plt.ylabel('Correlation coefficient', fontsize=16)
+# Ensure y axis is in 2 DP
+plt.gca().yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
+#plt.title('Scatter Plot of Distance vs Correlation')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.legend(fontsize=16)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\corrplot.png', dpi=360, bbox_inches='tight')
+================================================================================================================================================================================================================================================
+#  MONTHLY MEAN DIFFERENCES WITH DISTANCE
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+
+# Define the first dataset (SCTV, RSVL, etc.)
+data1 = {
+    'KYMN': ['SCTV', 'RSVL', 'RPTN', 'BTCK', 'HRDB', 'MRHD', 'LSML', 'MROK', 'GRHM', 'PGHL', 'ELST', 'FCHV', 'WNCH', 'FRNY', 'SCTV', 'ERLN', 'BNVL', 'CRMT', 'BLRK'],
+    'COOP': ['SCTK2', 'RUSK2', 'MRNK2', 'PNVK2', 'DIXK2', 'CRLK2', 'VSLK2', 'BRRK2', 'HNDK2', 'CRFK2', 'CSYK2', 'TVLK2', 'PRSK2', 'HNDK2', 'BRRK2', 'CRFK2', 'BCAK2', 'LMK', 'NOLK2'],
+    'Distance': [1.23, 2.88, 5.63, 8.48, 10.85, 11.76, 11.94, 12.83, 14.05, 15.56, 16.22, 16.98, 18.55, 18.88, 18.92, 20.30, 20.40, 21.40, 21.59],
+    'Correlation': [-6.331, -4.942, -2.730, 4.676, -1.429, 0.363, 2.180, -1.361, -4.046, -7.189, -4.984, -11.870, -12.652, -1.898, -3.789, -10.874, -10.231, -7.190, -6.983]
+}
+
+# Define the second dataset (FARM, QKSD, etc.)
+data2 = {
+    'KYMN': ['FARM', 'QKSD', 'LSML', 'HUEY', 'LXGN', 'HHTS', 'PVRT'],
+    'COOP': ['BWG', 'JKL', 'FFT', 'CVG', 'LEX', 'CVG', 'OWB'],
+    'Distance': [5.89, 6.34, 7.86, 9.50, 9.68, 17.18, 21.61],
+    'Correlation': [4.366, -3.957, 3.678, 4.804, -4.084, 2.904, 12.300]
+}
+
+# Create DataFrames
+df1 = pd.DataFrame(data1)
+df2 = pd.DataFrame(data2)
+
+# Create the scatter plot
+plt.figure(figsize=(10, 6))
+
+# Plot the first dataset
+plt.scatter(df1['Distance'], df1['Correlation'], color='blue', s=200, alpha=0.7, label='KYMN–COOP')
+
+# Plot the second dataset
+plt.scatter(df2['Distance'], df2['Correlation'], color='green', s=200, alpha=0.7, marker='s', label='KYMN–ASOS')
+
+# Add annotations for the first dataset
+for i, row in df1.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Correlation']), fontsize=10, ha='right')
+
+# Add annotations for the second dataset
+for i, row in df2.iterrows():
+    plt.annotate(f"{row['KYMN']}-{row['COOP']}", (row['Distance'], row['Correlation']), fontsize=10, ha='right')
+
+# Add labels and title
+plt.xlabel('Distance (km)', fontsize=16)
+plt.ylabel('Mean monthly precipitation difference (mm)', fontsize=16)
+# Ensure y axis is in 2 DP
+plt.gca().yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
+#plt.title('Scatter Plot of Distance vs Correlation')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.legend(fontsize=16)
+#plt.legend(fontsize=16, loc='right', bbox_to_anchor=(1, 0.9))
+
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+#plt.savefig(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\corrplot.png', dpi=360, bbox_inches='tight')
+================================================================================================================================================================================================================================================
+#03172025 AVERAGE MONTHLY PRECIPITATION FOR KYMN-COOP
+
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_dual_axis_chart(months, kymn, coop, diff):
+    x = np.arange(len(months))  # Label locations
+    width = 0.3  # Width of bars
+
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+
+    # Primary axis (KYMN and COOP)
+    ax1.bar(x - width/2, kymn, width, label="KYMN", color='red')
+    ax1.bar(x + width/2, coop, width, label="COOP", color='blue')
+    #plt.xlabel('Months)', fontsize=14)
+    ax1.set_ylabel("Mean monthly precipitation (mm)", fontsize=14)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(months)
+    ax1.legend(loc='upper left')
+
+    # Secondary axis (DIFF)
+    ax2 = ax1.twinx()
+    #ax2.bar(x + width*1.5, diff, width, label="DIFF", color='black')
+    ax2.bar(x + width*1.5, diff, width, label="DIFF", hatch='///', color = 'gray')
+    ax2.set_ylabel("Mean monthly difference  (mm)", color='black', fontsize=14)
+    ax2.set_ylim(-8, 8)  # Set scale from -1.0 to 1.0
+
+    # Title and final formatting
+    #plt.title("KYMN vs ASOS with DIFF on Secondary Axis")
+    ax2.legend(loc='upper right')
+    plt.show()
+    
+
+days = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+kymn_values = [82.60447368, 119.7359474, 121.2985789, 137.3497895, 121.9606316, 127.0837895, 138.6185789, 97.53257895, 
+               98.16373684, 100.1776842, 91.91336842, 121.8699474]
+coop_values = [84.51511779, 123.7029998, 125.3834504, 144.1581011, 127.4665044, 132.4191836, 146.2488954, 101.6053741, 
+               103.9712237, 103.9685767, 95.91451747, 126.6053375]
+diff_values = [-1.910644105, -3.967052421, -4.084871474, -6.808311579, -5.505872842, -5.335394105, -7.630316421, -4.072795158, 
+               -5.807486842, -3.790892526, -4.001149053, -4.735390105]
+
+# Run function
+plot_dual_axis_chart(days, kymn_values, coop_values, diff_values)
+================================================================================================================================================================================================================================================
+#03172025 AVERAGE MONTHLY PRECIPITATION FOR KYMN-ASOS
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_dual_axis_chart(months, kymn, asos, diff):
+    x = np.arange(len(months))  # Label locations
+    width = 0.3  # Width of bars
+
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+
+    # Primary axis (KYMN and ASOS)
+    ax1.bar(x - width/2, kymn, width, label="KYMN", color='red')
+    ax1.bar(x + width/2, asos, width, label="ASOS", color='green')
+    ax1.set_ylabel("Mean monthly precipitation (mm)", fontsize=14)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(months)
+    ax1.legend(loc='upper left')
+
+    # Secondary axis (DIFF)
+    ax2 = ax1.twinx()
+    #ax2.bar(x + width*1.5, diff, width, label="DIFF", color='black')
+    ax2.bar(x + width*1.5, diff, width, label="DIFF", hatch='///', color = 'gray')
+    ax2.set_ylabel("Mean monthly difference  (mm)", color='black', fontsize=14)
+    ax2.set_ylim(-8, 8)  # Set scale from -1.0 to 1.0
+
+    # Title and final formatting
+    #plt.title("KYMN vs ASOS with DIFF on Secondary Axis")
+    ax2.legend(loc='upper right')
+    plt.show()
+
+
+days = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+kymn_values = [79.57142857, 119.4512857, 115.8434286, 138.1775714, 123.5762857, 123.2984286, 135.2902857, 100.1932857,
+93.97571429, 102.4791429, 88.69471429, 119.5752857]
+asos_values = [81.156302, 114.4910806, 112.3792883, 138.6653491, 118.4992369, 121.7377006, 127.4290423, 104.94645,
+88.05294629, 97.60497914, 87.78573829, 113.0754297]
+diff_values = [-1.584873429, 4.960205143, 3.464140286, -0.487777714, 5.077048857, 1.560728, 7.861243429, -4.753164286,
+5.922768, 4.874163714, 0.908976, 6.499856]
+
+# Run function
+plot_dual_axis_chart(days, kymn_values, asos_values, diff_values)
+================================================================================================================================================================================================================================================
+#06242025 OTT-HTB PLOT 
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\DEFENSE\KYMNASOS\OTT-HTB.csv')
+
+# Define the bin assignment function
+def assign_bin(value):
+    if value <= 2:
+        return "<=2"
+    elif 2 < value <= 4:
+        return "4"
+    elif 4 < value <= 6:
+        return "6"
+    elif 6 < value <= 8:
+        return "8"
+    elif 8 < value <= 10:
+        return "10"
+    elif 10 < value <= 12:
+        return "12"
+    elif 12 < value <= 14:
+        return "14"
+    elif 14 < value <= 16:
+        return "16"
+    elif 16 < value <= 18:
+        return "18"
+    elif 18 < value <= 20:
+        return "20"
+    elif 20 < value <= 22:
+        return "22"
+    elif 22 < value <= 24:
+        return "24"
+    elif 24 < value <= 26:
+        return "26"
+    elif 26 < value <= 28:
+        return "28"
+    elif 28 < value <= 30:
+        return "30"
+    elif 30 < value <= 32:
+        return "32"
+    elif 32 < value <= 34:
+        return "34"
+    elif 34 < value <= 36:
+        return "36"
+    elif 36 < value <= 38:
+        return "38"
+    elif 38 < value <= 40:
+        return "40"
+    elif 40 < value <= 42:
+        return "42"
+    elif 42 < value <= 44:
+        return "44"
+    elif 44 < value <= 46:
+        return "46"
+    elif 46 < value <= 48:
+        return "48"
+    elif 48 < value <= 50:
+        return "50"
+    elif value > 50:
+        return ">50"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_ASOS'] = df['KYMN'] - df['ASOS']
+
+# Apply the binning function to 'KYMN' and set it as an ordered categorical type
+df['KYMN_Bin'] = df['KYMN'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = [
+    "<=2", "4", "6", "8", "10", "12", "14", "16", "18", "20", 
+    "22", "24", "26", "28", "30", "32", "34", "36", "38", 
+    "40", "42", "44", "46", "48", "50", ">50"
+]
+
+# Convert 'KYMN_Bin' to an ordered categorical type
+df['KYMN_Bin'] = pd.Categorical(df['KYMN_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_ASOS'].mean()
+
+# Calculate the count of data points in each bin
+bin_counts = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_ASOS'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+ax = average_diff_per_bin.plot(kind='bar', color='skyblue', edgecolor='black')
+
+# Add only the sample sizes (without 'n=') on top or below each bar
+for i, count in enumerate(bin_counts):
+    if i in [0, 1, 2, 3, 4, 7, 21]:  # Specify indices where the sample size should go below
+        ax.text(i, average_diff_per_bin[i] - 0.5, f'{count}', ha='center', va='top', fontsize=16)
+    elif i in [5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 27]:  # Specify indices where the sample size should go above
+        ax.text(i, average_diff_per_bin[i] + 0.2, f'{count}', ha='center', va='bottom', fontsize=16)
+    else:  # Default for remaining indices (if any)
+        ax.text(i, average_diff_per_bin[i] + 0.5, f'{count}', ha='center', va='bottom', fontsize=16)
+
+# Customize the plot
+plt.xlabel('KYMN (mm)', fontsize=24)
+plt.ylabel('Average KYMN - ASOS (mm)', fontsize=24)
+plt.tick_params(axis='both', labelsize=24)
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=18)
+plt.ylim(-10, 20)  # Adjust based on your data range
+plt.yticks(fontsize=18)
+plt.tight_layout()
+
+# Show the plot
+plt.show()
+================================================================================================================================================================================================================================================
+#OTT VS SRG
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\DEFENSE\OTT-SRG.csv')
+
+# Define the bin assignment function
+def assign_bin(value):
+    if value <= 2:
+        return "<=2"
+    elif 2 < value <= 4:
+        return "4"
+    elif 4 < value <= 6:
+        return "6"
+    elif 6 < value <= 8:
+        return "8"
+    elif 8 < value <= 10:
+        return "10"
+    elif 10 < value <= 12:
+        return "12"
+    elif 12 < value <= 14:
+        return "14"
+    elif 14 < value <= 16:
+        return "16"
+    elif 16 < value <= 18:
+        return "18"
+    elif 18 < value <= 20:
+        return "20"
+    elif 20 < value <= 22:
+        return "22"
+    elif 22 < value <= 24:
+        return "24"
+    elif 24 < value <= 26:
+        return "26"
+    elif 26 < value <= 28:
+        return "28"
+    elif 28 < value <= 30:
+        return "30"
+    elif 30 < value <= 32:
+        return "32"
+    elif 32 < value <= 34:
+        return "34"
+    elif 34 < value <= 36:
+        return "36"
+    elif 36 < value <= 38:
+        return "38"
+    elif 38 < value <= 40:
+        return "40"
+    elif 40 < value <= 42:
+        return "42"
+    elif 42 < value <= 44:
+        return "44"
+    elif 44 < value <= 46:
+        return "46"
+    elif 46 < value <= 48:
+        return "48"
+    elif 48 < value <= 50:
+        return "50"
+    elif value > 50:
+        return ">50"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_COOP'] = df['KYMN'] - df['COOP']
+
+# Apply the binning function to 'KYMN' and set it as an ordered categorical type
+df['KYMN_Bin'] = df['KYMN'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = [
+    "<=2", "4", "6", "8", "10", "12", "14", "16", "18", "20", 
+    "22", "24", "26", "28", "30", "32", "34", "36", "38", 
+    "40", "42", "44", "46", "48", "50", ">50"
+]
+
+# Convert 'KYMN_Bin' to an ordered categorical type
+df['KYMN_Bin'] = pd.Categorical(df['KYMN_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_COOP'].mean()
+
+# Calculate the count of data points in each bin
+bin_counts = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_COOP'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+ax = average_diff_per_bin.plot(kind='bar', color='skyblue', edgecolor='black')
+
+# Add only the sample sizes (without 'n=') on top or below each bar
+for i, count in enumerate(bin_counts):
+    if i in [0, 1, 2, 3, 4, 6, 7, 8, 15, 16, 19, 21]:  # Specify indices where the sample size should go below
+        ax.text(i, average_diff_per_bin[i] - 0.5, f'{count}', ha='center', va='top', fontsize=12)
+    elif i in [5, 7, 10, 11, 12, 13, 14, 17, 18, 20, 22, 23, 24, 25, 26, 27]:  # Specify indices where the sample size should go above
+        ax.text(i, average_diff_per_bin[i] + 0.2, f'{count}', ha='center', va='bottom', fontsize=14)
+    else:  # Default for remaining indices (if any)
+        ax.text(i, average_diff_per_bin[i] + 0.5, f'{count}', ha='center', va='bottom', fontsize=13)
+
+
+# Customize the plot
+plt.xlabel('KYMN (mm)', fontsize=24)
+plt.ylabel('Average KYMN - COOP (mm)', fontsize=24)
+plt.tick_params(axis='both', labelsize=24)
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=18)
+plt.ylim(-10, 20)  # Adjust based on your data range
+plt.yticks(rotation=0, fontsize=18)
+plt.tight_layout()
+
+# Show the plot
+plt.show()
+================================================================================================================================================================================================================================================
+06242025 VRG-SRG PLOT
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\DEFENSE\VRG-SRG.csv')
+
+# Define the bin assignment function
+def assign_bin(value):
+    if value <= 2:
+        return "<=2"
+    elif 2 < value <= 4:
+        return "4"
+    elif 4 < value <= 6:
+        return "6"
+    elif 6 < value <= 8:
+        return "8"
+    elif 8 < value <= 10:
+        return "10"
+    elif 10 < value <= 12:
+        return "12"
+    elif 12 < value <= 14:
+        return "14"
+    elif 14 < value <= 16:
+        return "16"
+    elif 16 < value <= 18:
+        return "18"
+    elif 18 < value <= 20:
+        return "20"
+    elif 20 < value <= 22:
+        return "22"
+    elif 22 < value <= 24:
+        return "24"
+    elif 24 < value <= 26:
+        return "26"
+    elif 26 < value <= 28:
+        return "28"
+    elif 28 < value <= 30:
+        return "30"
+    elif 30 < value <= 32:
+        return "32"
+    elif 32 < value <= 34:
+        return "34"
+    elif 34 < value <= 36:
+        return "36"
+    elif 36 < value <= 38:
+        return "38"
+    elif 38 < value <= 40:
+        return "40"
+    elif 40 < value <= 42:
+        return "42"
+    elif 42 < value <= 44:
+        return "44"
+    elif 44 < value <= 46:
+        return "46"
+    elif 46 < value <= 48:
+        return "48"
+    elif 48 < value <= 50:
+        return "50"
+    elif value > 50:
+        return ">50"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_COOP'] = df['KYMN'] - df['COOP']
+
+# Apply the binning function to 'KYMN' and set it as an ordered categorical type
+df['KYMN_Bin'] = df['KYMN'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = [
+    "<=2", "4", "6", "8", "10", "12", "14", "16", "18", "20", 
+    "22", "24", "26", "28", "30", "32", "34", "36", "38", 
+    "40", "42", "44", "46", "48", "50", ">50"
+]
+
+# Convert 'KYMN_Bin' to an ordered categorical type
+df['KYMN_Bin'] = pd.Categorical(df['KYMN_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_COOP'].mean()
+
+# Calculate the count of data points in each bin
+bin_counts = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_COOP'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+ax = average_diff_per_bin.plot(kind='bar', color='skyblue', edgecolor='black')
+
+# Add only the sample sizes (without 'n=') on top or below each bar
+for i, count in enumerate(bin_counts):
+    if i in [0, 1, 2, 3, 4, 5, 6, 7]:  # Specify indices where the sample size should go below
+        ax.text(i, average_diff_per_bin[i] - 0.5, f'{count}', ha='center', va='top', fontsize=12)
+    elif i in [7, 8, 10, 11, 12, 13, 14, 17, 18, 20, 22, 23, 24, 25, 26, 27]:  # Specify indices where the sample size should go above
+        ax.text(i, average_diff_per_bin[i] + 0.2, f'{count}', ha='center', va='bottom', fontsize=14)
+    else:  # Default for remaining indices (if any)
+        ax.text(i, average_diff_per_bin[i] + 0.5, f'{count}', ha='center', va='bottom', fontsize=13)
+
+
+# Customize the plot
+plt.xlabel('KYMN (mm)', fontsize=24)
+plt.ylabel('Average KYMN - COOP (mm)', fontsize=24)
+plt.tick_params(axis='both', labelsize=24)
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=18)
+plt.ylim(-10, 20)  # Adjust based on your data range
+plt.yticks(rotation=0, fontsize=18)
+plt.tight_layout()
+
+# Show the plot
+plt.show()
+
+================================================================================================================================================================================================================================================
+06242025 VRG-HTB PLOT
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the data
+df = pd.read_csv(r'C:\Users\olf42060\OneDrive - Western Kentucky University\Desktop\DEFENSE\KYMNASOS\VRG-HTB.csv')
+
+# Define the bin assignment function
+def assign_bin(value):
+    if value <= 2:
+        return "<=2"
+    elif 2 < value <= 4:
+        return "4"
+    elif 4 < value <= 6:
+        return "6"
+    elif 6 < value <= 8:
+        return "8"
+    elif 8 < value <= 10:
+        return "10"
+    elif 10 < value <= 12:
+        return "12"
+    elif 12 < value <= 14:
+        return "14"
+    elif 14 < value <= 16:
+        return "16"
+    elif 16 < value <= 18:
+        return "18"
+    elif 18 < value <= 20:
+        return "20"
+    elif 20 < value <= 22:
+        return "22"
+    elif 22 < value <= 24:
+        return "24"
+    elif 24 < value <= 26:
+        return "26"
+    elif 26 < value <= 28:
+        return "28"
+    elif 28 < value <= 30:
+        return "30"
+    elif 30 < value <= 32:
+        return "32"
+    elif 32 < value <= 34:
+        return "34"
+    elif 34 < value <= 36:
+        return "36"
+    elif 36 < value <= 38:
+        return "38"
+    elif 38 < value <= 40:
+        return "40"
+    elif 40 < value <= 42:
+        return "42"
+    elif 42 < value <= 44:
+        return "44"
+    elif 44 < value <= 46:
+        return "46"
+    elif 46 < value <= 48:
+        return "48"
+    elif 48 < value <= 50:
+        return "50"
+    elif value > 50:
+        return ">50"
+
+# Calculate the difference and create a new column 'KYMN_minus_COOP'
+df['KYMN_minus_ASOS'] = df['KYMN'] - df['ASOS']
+
+# Apply the binning function to 'KYMN' and set it as an ordered categorical type
+df['KYMN_Bin'] = df['KYMN'].apply(assign_bin)
+
+# Define the order of the bins
+bin_order = [
+    "<=2", "4", "6", "8", "10", "12", "14", "16", "18", "20", 
+    "22", "24", "26", "28", "30", "32", "34", "36", "38", 
+    "40", "42", "44", "46", "48", "50", ">50"
+]
+
+# Convert 'KYMN_Bin' to an ordered categorical type
+df['KYMN_Bin'] = pd.Categorical(df['KYMN_Bin'], categories=bin_order, ordered=True)
+
+# Calculate the average of KYMN_minus_COOP for each bin
+average_diff_per_bin = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_ASOS'].mean()
+
+# Calculate the count of data points in each bin
+bin_counts = df.groupby('KYMN_Bin', observed=True)['KYMN_minus_ASOS'].count()
+
+# Plotting the bar chart
+plt.figure(figsize=(12, 6))
+ax = average_diff_per_bin.plot(kind='bar', color='skyblue', edgecolor='black')
+
+# Add only the sample sizes (without 'n=') on top or below each bar
+for i, count in enumerate(bin_counts):
+    if i in [0, 1, 2, 3, 4, 5, 7]:  # Specify indices where the sample size should go below
+        ax.text(i, average_diff_per_bin[i] - 0.5, f'{count}', ha='center', va='top', fontsize=16)
+    elif i in [6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]:  # Specify indices where the sample size should go above
+        ax.text(i, average_diff_per_bin[i] + 0.2, f'{count}', ha='center', va='bottom', fontsize=16)
+    else:  # Default for remaining indices (if any)
+        ax.text(i, average_diff_per_bin[i] + 0.5, f'{count}', ha='center', va='bottom', fontsize=16)
+
+# Customize the plot
+plt.xlabel('KYMN (mm)', fontsize=24)
+plt.ylabel('Average KYMN - ASOS (mm)', fontsize=24)
+plt.tick_params(axis='both', labelsize=24)
+plt.grid(True, axis='y')
+plt.xticks(rotation=0, fontsize=18)
+plt.ylim(-10, 20)  # Adjust based on your data range
+plt.yticks(fontsize=18)
+plt.tight_layout()
+
+# Show the plot
+plt.show()
