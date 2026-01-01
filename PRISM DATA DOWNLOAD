@@ -1,0 +1,143 @@
+import os
+import urllib.request
+from datetime import datetime, timedelta
+from tqdm import tqdm
+import zipfile
+import rasterio
+from rasterio.mask import mask
+from shapely.geometry import box
+import geopandas as gpd
+
+# -------------------------------
+# Paths
+# -------------------------------
+folder = r"C:\Users\USER\OneDrive - Western Kentucky University\Desktop\FLOOD CONTROL"
+
+# NEW: directory to store clipped GeoTIFFs
+tif_out_dir = os.path.join(folder, "tiff_files")
+os.makedirs(tif_out_dir, exist_ok=True)
+
+base_url = "https://services.nacse.org/prism/data/get/us"
+resolution = "800m"
+clim_var = "ppt"
+
+start = datetime.strptime("1981-01-01", "%Y-%m-%d")
+stop  = datetime.strptime("1981-01-02", "%Y-%m-%d")
+
+# San Diego bounding box (lat/lon)
+san_diego_bbox = (-117.3, 32.5, -116.9, 33.0)
+
+# -------------------------------
+# Progress bar helper
+# -------------------------------
+def _progress_hook(block_num, block_size, total_size, t):
+    downloaded = block_num * block_size
+    if total_size > 0:
+        t.update(min(block_size, total_size - t.n))
+    else:
+        t.update(downloaded - t.n)
+
+# -------------------------------
+# Crop function (CRS-safe)
+# -------------------------------
+def crop_to_bbox(input_file, output_file, bbox):
+    with rasterio.open(input_file) as src:
+
+        gdf = gpd.GeoDataFrame(
+            geometry=[box(*bbox)],
+            crs="EPSG:4326"
+        ).to_crs(src.crs)
+
+        out_image, out_transform = mask(src, gdf.geometry, crop=True)
+
+        out_meta = src.meta.copy()
+        out_meta.update({
+            "driver": "GTiff",
+            "height": out_image.shape[1],
+            "width": out_image.shape[2],
+            "transform": out_transform
+        })
+
+        with rasterio.open(output_file, "w", **out_meta) as dest:
+            dest.write(out_image)
+
+# -------------------------------
+# Main loop
+# -------------------------------
+while start <= stop:
+    day = start.strftime("%Y%m%d")
+    url = f"{base_url}/{resolution}/{clim_var}/{day}"
+    zip_file = os.path.join(folder, f"PRISM_{clim_var}_{day}.zip")
+
+    try:
+        # Download
+        with tqdm(desc=f"Downloading {day}", unit="B", unit_scale=True, unit_divisor=1024) as t:
+            urllib.request.urlretrieve(
+                url,
+                zip_file,
+                reporthook=lambda b, bs, ts: _progress_hook(b, bs, ts, t)
+            )
+
+        # Extract
+        with zipfile.ZipFile(zip_file, "r") as zip_ref:
+            extract_folder = os.path.join(folder, f"PRISM_{clim_var}_{day}")
+            zip_ref.extractall(extract_folder)
+
+            all_files = os.listdir(extract_folder)
+            raster_files = [f for f in all_files if f.endswith((".tif", ".bil", ".asc"))]
+
+            if not raster_files:
+                print(f"✗ No raster found for {day}")
+                start += timedelta(days=1)
+                continue
+
+            raster_path = os.path.join(extract_folder, raster_files[0])
+
+            # NEW: save clipped file to tiff_files directory
+            clipped_file = os.path.join(
+                tif_out_dir,
+                f"SanDiego_{clim_var}_{day}.tif"
+            )
+
+            crop_to_bbox(raster_path, clipped_file, san_diego_bbox)
+
+            print(f"✓ Saved clipped San Diego GeoTIFF: {clipped_file}")
+
+    except Exception as e:
+        print(f"✗ Error processing {day}: {e}")
+
+    start += timedelta(days=1)
+
+print("All PRISM San Diego GeoTIFFs saved to tiff_files/")
+
+
+Prism GeoTiff files to CSV
+=================================================================================
+import rasterio
+import numpy as np
+import pandas as pd
+
+tif = r"C:\Users\USER\OneDrive - Western Kentucky University\Desktop\FLOOD CONTROL\tiff_files\SanDiego_ppt_19880919.tif"
+
+with rasterio.open(tif) as src:
+    data = src.read(1)
+    transform = src.transform
+    nodata = src.nodata
+
+data = np.where(data == nodata, np.nan, data)
+data[data < 0] = np.nan
+
+rows, cols = data.shape
+
+records = []
+
+for r in range(rows):
+    for c in range(cols):
+        val = data[r, c]
+        if not np.isnan(val):
+            lon, lat = transform * (c, r)
+            records.append([lat, lon, val])
+
+df = pd.DataFrame(records, columns=["lat", "lon", "precip_mm"])
+df.to_csv(r"C:\Users\USER\OneDrive - Western Kentucky University\Desktop\SD_19880919.csv", index=False)
+print(df)
