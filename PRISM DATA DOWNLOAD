@@ -141,3 +141,218 @@ for r in range(rows):
 df = pd.DataFrame(records, columns=["lat", "lon", "precip_mm"])
 df.to_csv(r"C:\Users\USER\OneDrive - Western Kentucky University\Desktop\SD_19880919.csv", index=False)
 print(df)
+
+
+Extract the daily data GeoTiff to a sinfle CSV file
+=====================================================================================
+import glob
+import rasterio
+import numpy as np
+import pandas as pd
+import os
+from datetime import datetime
+
+# Folder with clipped San Diego GeoTIFFs
+tif_folder = r"C:\Users\USER\OneDrive - Western Kentucky University\Desktop\FLOOD CONTROL\tiff_files"
+tif_files = sorted(glob.glob(os.path.join(tif_folder, "SanDiego_ppt_*.tif")))
+
+print(f"Found {len(tif_files)} files to process")
+
+all_data = []
+
+for tif in tif_files:
+    try:
+        with rasterio.open(tif) as src:
+            data = src.read(1)
+            nodata = src.nodata
+            transform = src.transform
+            
+            # Get row and column indices
+            rows, cols = np.where(np.ones_like(data))
+            
+            # Get coordinates for each pixel
+            xs, ys = rasterio.transform.xy(transform, rows, cols)
+            
+            # Get precipitation values
+            precip_values = data[rows, cols]
+            
+        # Extract date from filename
+        date_str = os.path.basename(tif).split("_")[-1].replace(".tif", "")
+        
+        # Convert YYYYMMDD to YYYY-MM-DD
+        try:
+            date_obj = datetime.strptime(date_str, "%Y%m%d")
+            formatted_date = date_obj.strftime("%Y-%m-%d")
+        except:
+            formatted_date = date_str
+        
+        # Create DataFrame for this date
+        df_day = pd.DataFrame({
+            'date': formatted_date,
+            'longitude': xs,
+            'latitude': ys,
+            'row': rows,
+            'col': cols,
+            'precip_mm': precip_values
+        })
+        
+        # Filter out NoData values
+        if nodata is not None:
+            df_day = df_day[df_day['precip_mm'] != nodata]
+        
+        # Filter out negative values
+        df_day = df_day[df_day['precip_mm'] >= 0]
+        
+        all_data.append(df_day)
+        print(f" Processed {formatted_date}: {len(df_day)} valid pixels")
+        
+    except Exception as e:
+        print(f"✗ Error processing {os.path.basename(tif)}: {e}")
+===========================================================================================================
+# Combine all data into one DataFrame
+if all_data:
+    df_combined = pd.concat(all_data, ignore_index=True)
+    
+    # Save to CSV
+    csv_out = os.path.join(tif_folder, "SanDiego_PRISM_all_pixels.csv")
+    df_combined.to_csv(csv_out, index=False)
+    
+    print(f"\n CSV saved to {csv_out}")
+    print(f" Total records: {len(df_combined):,}")
+    print(f" Date range: {df_combined['date'].min()} to {df_combined['date'].max()}")
+    print(f" Unique dates: {df_combined['date'].nunique()}")
+    print(f"\nData preview:")
+    print(df_combined.head(10))
+else:
+    print("✗ No valid data extracted")
+===========================================================================================================
+if all_data:
+    df_combined = pd.concat(all_data, ignore_index=True)
+    
+    # Ensure date column is datetime (in case it wasn't)
+    df_combined['date'] = pd.to_datetime(df_combined['date'], errors='coerce')
+    
+    # Remove any rows where date conversion failed
+    df_combined = df_combined.dropna(subset=['date'])
+    
+    # Create year-month column
+    df_combined['year_month'] = df_combined['date'].dt.to_period('M')
+    
+    # Group by longitude, latitude, and year-month, then sum precipitation
+    df_monthly = df_combined.groupby(['longitude', 'latitude', 'row', 'col', 'year_month'], as_index=False).agg({
+        'precip_mm': 'sum'
+    })
+    
+    # Rename column to indicate monthly sum
+    df_monthly.rename(columns={'precip_mm': 'monthly_precip_mm'}, inplace=True)
+    
+    # Convert year_month back to string for CSV export
+    df_monthly['year_month'] = df_monthly['year_month'].astype(str)
+    
+    # Save monthly data to CSV
+    csv_monthly = os.path.join(tif_folder, "SanDiego_PRISM_monthly_sums.csv")
+    df_monthly.to_csv(csv_monthly, index=False)
+    
+    print(f"\n Monthly CSV saved to {csv_monthly}")
+    print(f" Total monthly records: {len(df_monthly):,}")
+    print(f" Unique months: {df_monthly['year_month'].nunique()}")
+    print(f" Unique grid cells: {df_monthly[['longitude', 'latitude']].drop_duplicates().shape[0]}")
+    print(f"\nMonthly data preview:")
+    print(df_monthly.head(10))
+    
+    # Optional: Also save the daily data
+    csv_daily = os.path.join(tif_folder, "SanDiego_PRISM_daily.csv")
+    df_combined.drop('year_month', axis=1).to_csv(csv_daily, index=False)
+    print(f"\n Daily CSV also saved to {csv_daily}")
+    
+else:
+    print("✗ No valid data extracted")
+===========================================================================================================
+import pandas as pd
+import os
+
+# Read the seasonal data
+tif_folder = r"C:\Users\USER\OneDrive - Western Kentucky University\Desktop\FLOOD CONTROL\tiff_files"
+csv_seasonal = os.path.join(tif_folder, "SanDiego_PRISM_seasonal_sums.csv")
+
+df_seasonal = pd.read_csv(csv_seasonal)
+
+# Extract season name and year from the season column
+df_seasonal['season_name'] = df_seasonal['season'].str.split('-').str[1]
+df_seasonal['season_year'] = df_seasonal['season'].str.split('-').str[0].astype(int)
+
+# Filter for years 1981-2020
+df_filtered = df_seasonal[(df_seasonal['season_year'] >= 1981) & (df_seasonal['season_year'] <= 2020)]
+
+# Group by longitude, latitude, and season name (across all years)
+df_all_seasons = df_filtered.groupby(['longitude', 'latitude', 'season_name'], as_index=False).agg({
+    'seasonal_precip_mm': 'sum'
+})
+
+# Rename column to indicate total across all years
+df_all_seasons.rename(columns={'seasonal_precip_mm': 'total_precip_mm_1981_2020'}, inplace=True)
+
+# Save combined seasonal data
+csv_all_seasons = os.path.join(tif_folder, "SanDiego_PRISM_all_seasons_1981_2020.csv")
+df_all_seasons.to_csv(csv_all_seasons, index=False)
+
+print(f" All seasons (1981-2020) CSV saved to {csv_all_seasons}")
+print(f" Total records: {len(df_all_seasons):,}")
+print(f" Unique grid cells: {df_all_seasons[['longitude', 'latitude']].drop_duplicates().shape[0]}")
+print(f"\nData preview:")
+print(df_all_seasons.head(10))
+
+# Create separate files for each season
+for season in ['Winter', 'Spring', 'Summer', 'Fall']:
+    df_season = df_all_seasons[df_all_seasons['season_name'] == season].copy()
+    df_season = df_season[['longitude', 'latitude', 'total_precip_mm_1981_2020']]
+    
+    csv_season = os.path.join(tif_folder, f"SanDiego_PRISM_{season}_1981_2020.csv")
+    df_season.to_csv(csv_season, index=False)
+    
+    print(f"n {season} (1981-2020) CSV saved to {csv_season}")
+    print(f"  Records: {len(df_season):,}")
+    print(f"  Preview:")
+    print(df_season.head(5))
+======================================================================================================yearly totals
+
+import pandas as pd
+import os
+
+# Read the monthly data
+tif_folder = r"C:\Users\USER\OneDrive - Western Kentucky University\Desktop\FLOOD CONTROL\tiff_files"
+csv_monthly = os.path.join(tif_folder, "SanDiego_PRISM_monthly_sums.csv")
+
+df_monthly = pd.read_csv(csv_monthly)
+
+# Extract year from year_month column (format: "YYYY-MM")
+df_monthly['year'] = df_monthly['year_month'].str.split('-').str[0].astype(int)
+
+# Group by longitude, latitude, and year, then sum precipitation
+df_yearly = df_monthly.groupby(['longitude', 'latitude', 'year'], as_index=False).agg({
+    'monthly_precip_mm': 'sum'
+})
+
+# Rename column to indicate yearly sum
+df_yearly.rename(columns={'monthly_precip_mm': 'yearly_precip_mm'}, inplace=True)
+
+# Save yearly data to CSV
+csv_yearly = os.path.join(tif_folder, "SanDiego_PRISM_yearly_sums.csv")
+df_yearly.to_csv(csv_yearly, index=False)
+
+print(f" Yearly CSV saved to {csv_yearly}")
+print(f" Total yearly records: {len(df_yearly):,}")
+print(f" Unique years: {df_yearly['year'].nunique()}")
+print(f" Year range: {df_yearly['year'].min()} - {df_yearly['year'].max()}")
+print(f" Unique grid cells: {df_yearly[['longitude', 'latitude']].drop_duplicates().shape[0]}")
+print(f"\nYearly data preview:")
+print(df_yearly.head(10))
+
+# Optional: Filter for specific year range (e.g., 1981-2020)
+df_yearly_filtered = df_yearly[(df_yearly['year'] >= 1981) & (df_yearly['year'] <= 2020)]
+
+csv_yearly_filtered = os.path.join(tif_folder, "SanDiego_PRISM_yearly_sums_1981_2020.csv")
+df_yearly_filtered.to_csv(csv_yearly_filtered, index=False)
+
+print(f"\n Filtered yearly (1981-2020) CSV saved to {csv_yearly_filtered}")
+print(f" Total records: {len(df_yearly_filtered):,}")
